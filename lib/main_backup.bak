@@ -1,0 +1,608 @@
+import 'package:excel/excel.dart';
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'dart:io';
+import 'package:window_size/window_size.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    setWindowTitle('Hiszpańskie Fiszki');
+    setWindowMinSize(const Size(360, 800));
+    setWindowMaxSize(const Size(360, 800));
+  }
+
+  runApp(FlashcardApp());
+}
+
+class FlashcardApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'Hiszpańskie Fiszki',
+      theme: ThemeData(
+        scaffoldBackgroundColor: const Color(0xFFFFF200),
+        textTheme: const TextTheme(
+          bodyMedium: TextStyle(color: Colors.black, fontSize: 16, decoration: TextDecoration.none),
+        ),
+      ),
+      home: HomeScreen(),
+    );
+  }
+}
+
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+
+  @override
+  void initState() {
+    super.initState();
+    loadTopicsFromExcel();
+  }
+
+  Future<void> loadTopicsFromExcel() async {
+    try {
+      final file = File('d:/fiszki.xlsx');
+      if (!file.existsSync()) return;
+
+      final bytes = file.readAsBytesSync();
+      final excel = Excel.decodeBytes(bytes);
+      final sheet = excel.tables[excel.tables.keys.first]!;
+
+      final Set<String> uniqueTopics = {};
+      for (var row in sheet.rows.skip(1)) {
+        if (row.length > 3 && row[3] != null) {
+          uniqueTopics.add(row[3]!.value.toString());
+        }
+      }
+
+      setState(() {
+        menuItems = ['Powtórki', ...uniqueTopics.toList()];
+      });
+    } catch (e) {
+      debugPrint('Błąd podczas ładowania Excela: \$e');
+    }
+  }
+
+  final ScrollController _scrollController = ScrollController();
+
+  final Color topBarColor = const Color(0xFFC60B1E);    // czerwony
+  final Color middleColor = const Color(0xFFFFF200);    // żółty
+  final Color bottomBarColor = const Color(0xFFC60B1E); // czerwony
+
+  List<String> menuItems = [];
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // GÓRNY PASEK
+        Container(
+          color: topBarColor,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: const [
+              Icon(Icons.menu, color: Colors.white),
+              Text('Hiszpańskie fiszki', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, decoration: TextDecoration.none)),
+              Icon(Icons.settings, color: Colors.white),
+            ],
+          ),
+        ),
+
+        // ŚRODEK – MENU
+        Expanded(
+          child: Container(
+            color: middleColor,
+            child: Scrollbar( 
+              controller: _scrollController,
+              thumbVisibility: true,
+              child: ListView.builder(
+              itemCount: menuItems.length,
+              padding: const EdgeInsets.all(16),
+              itemBuilder: (context, index) {
+                return Card(
+                  color: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  elevation: 2,
+                  margin: const EdgeInsets.symmetric(vertical: 8),
+                  child: ListTile(
+                    leading: const Icon(Icons.play_circle_outline, color: Colors.red),
+                    title: Text(menuItems[index], style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+onTap: () {
+                        final selected = menuItems[index];
+                        if (selected == 'Powtórki') {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const RevisionsScreen()),
+                          );
+                        } else {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => TopicDetailScreen(topic: selected),
+                            ),
+                          );
+                        }
+                      },
+                  ),
+                );
+              },
+            ),
+            ),
+          ),
+        ),
+
+        Container(
+          height: 44,
+          child: Column(
+            children: [
+              Container(height: 2, color: Color(0xFFC60B1E)),
+              Expanded(
+                child: Container(
+                  color: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: const [
+                      Icon(Icons.school, color: Color(0xFFC60B1E)),
+                      Icon(Icons.bar_chart, color: Color(0xFFC60B1E)),
+                      Icon(Icons.person, color: Color(0xFFC60B1E)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        )
+      ],
+    );
+  }
+}
+
+class TopicDetailScreen extends StatefulWidget {
+  final String topic;
+
+  const TopicDetailScreen({Key? key, required this.topic}) : super(key: key);
+
+  @override
+  State<TopicDetailScreen> createState() => _TopicDetailScreenState();
+}
+
+class _TopicDetailScreenState extends State<TopicDetailScreen> {
+  final Color topBarColor = const Color(0xFFC60B1E);
+  final Color middleColor = const Color(0xFFFFF200);
+  final Color bottomBarColor = const Color(0xFFC60B1E);
+
+  List<Map<String, String>> flashcards = [];
+  int currentIndex = 0;
+  bool showAnswer = false;
+
+  @override
+  void initState() {
+    super.initState();
+    loadFlashcardsForTopic(widget.topic);
+  }
+
+  Future<void> loadFlashcardsForTopic(String topic) async {
+    try {
+      final file = File('d:/fiszki.xlsx');
+      if (!file.existsSync()) return;
+
+      final bytes = file.readAsBytesSync();
+      final excel = Excel.decodeBytes(bytes);
+      final sheet = excel.tables[excel.tables.keys.first]!;
+
+      final List<Map<String, String>> cards = [];
+      for (var row in sheet.rows.skip(1)) {
+        if (row.length >= 4 &&
+            row[0] != null &&
+            row[1] != null &&
+            row[2] != null &&
+            row[3] != null &&
+            row[3]!.value.toString() == topic) {
+          cards.add({
+            'pl': row[0]!.value.toString(),
+            'es': row[1]!.value.toString(),
+            'pron': row[2]!.value.toString(),
+          });
+        }
+      }
+
+      setState(() {
+        flashcards = cards;
+      });
+    } catch (e) {
+      debugPrint('Błąd ładowania fiszek: $e');
+    }
+  }
+
+  Future<void> saveRevisionDate(String polishWord) async {
+    final file = File('d:/fiszki.xlsx');
+    final bytes = file.readAsBytesSync();
+    final excel = Excel.decodeBytes(bytes);
+    final sheet = excel.tables[excel.tables.keys.first]!;
+
+    for (int i = 1; i < sheet.rows.length; i++) {
+      final row = sheet.rows[i];
+      final plCell = row[0];
+      if (plCell != null && plCell.value.toString().trim() == polishWord.trim()) {
+        final now = DateTime.now().toIso8601String();
+        sheet.updateCell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: i), TextCellValue(now));
+        break;
+      }
+    }
+
+    final updated = excel.encode();
+    if (updated != null) {
+      file.writeAsBytesSync(updated, flush: true);
+    }
+  }
+
+  Future<void> handleReaction() async {
+    final plWord = flashcards[currentIndex]['pl']!;
+    await saveRevisionDate(plWord);
+
+    setState(() {
+      currentIndex++;
+      showAnswer = false;
+    });
+
+    if (currentIndex >= flashcards.length) {
+      Future.delayed(const Duration(milliseconds: 300), () {
+        Navigator.pop(context);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool hasData = currentIndex < flashcards.length;
+
+    return Column(
+      children: [
+        // GÓRNY PASEK
+        Container(
+          height: 51,
+          color: topBarColor,
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: () => Navigator.pop(context),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  widget.topic,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    decoration: TextDecoration.none
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // ŚRODEK – POJEDYNCZA KARTA
+        Expanded(
+          child: Container(
+            color: middleColor,
+            child: Center(
+              child: hasData
+                  ? Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          flashcards[currentIndex]['pl']!,
+                          style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, decoration: TextDecoration.none),
+                          textAlign: TextAlign.center,
+                        ),
+                        if (showAnswer) ...[
+                          const SizedBox(height: 20),
+                          Text(
+                            flashcards[currentIndex]['es']!,
+                            style: const TextStyle(fontSize: 24, color: Colors.red, decoration: TextDecoration.none),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ],
+                    )
+                  : const CircularProgressIndicator(),
+            ),
+          ),
+        ),
+
+        // DOLNY PASEK – ZALEŻNY OD TRYBU
+        Container(
+          height: 60,
+          child: Column(
+            children: [
+              Container(height: 2, color: bottomBarColor),
+              Expanded(
+                child: Container(
+                  color: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Center(
+                    child: hasData
+                        ? (!showAnswer
+                            ? ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: bottomBarColor,
+                                  foregroundColor: Colors.white,
+                                ),
+                                onPressed: () {
+                                  setState(() => showAnswer = true);
+                                },
+                                child: const Text('Sprawdź'),
+                              )
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                children: [
+                                  FaIconButton(
+                                    icon: FontAwesomeIcons.solidFaceFrown,
+                                    color: Colors.red,
+                                    onTap: handleReaction,
+                                  ),
+                                  FaIconButton(
+                                    icon: FontAwesomeIcons.solidFaceMeh,
+                                    color: Colors.yellow,
+                                    onTap: handleReaction,
+                                  ),
+                                  FaIconButton(
+                                    icon: FontAwesomeIcons.solidFaceSmile,
+                                    color: Colors.green,
+                                    onTap: handleReaction,
+                                  ),
+                                ],
+                              ))
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class FaIconButton extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const FaIconButton({super.key, required this.icon, required this.color, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: FaIcon(icon, color: color, size: 28),
+    );
+  }
+}
+
+class RevisionsScreen extends StatefulWidget {
+  const RevisionsScreen({Key? key}) : super(key: key);
+
+  @override
+  State<RevisionsScreen> createState() => _RevisionsScreenState();
+}
+
+class _RevisionsScreenState extends State<RevisionsScreen> {
+  final Color topBarColor = const Color(0xFFC60B1E);
+  final Color middleColor = const Color(0xFFFFF200);
+  final Color bottomBarColor = const Color(0xFFC60B1E);
+
+  List<Map<String, String>> revisions = [];
+  int currentIndex = 0;
+  bool showAnswer = false;
+  bool isLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    loadRevisions();
+  }
+
+  Future<void> loadRevisions() async {
+    final file = File('d:/fiszki.xlsx');
+    if (!file.existsSync()) return;
+
+    final bytes = file.readAsBytesSync();
+    final excel = Excel.decodeBytes(bytes);
+    final sheet = excel.tables[excel.tables.keys.first]!;
+
+    final List<Map<String, String>> learned = [];
+
+    for (var row in sheet.rows.skip(1)) {
+      if (row.length > 5 &&
+          row[0] != null &&
+          row[1] != null &&
+          row[2] != null &&
+          row[3] != null &&
+          row[5] != null &&
+          row[5]!.value != null &&
+          row[5]!.value.toString().trim().isNotEmpty) {
+        learned.add({
+          'pl': row[0]!.value.toString(),
+          'es': row[1]!.value.toString(),
+          'pron': row[2]!.value.toString(),
+          'topic': row[3]!.value.toString(),
+        });
+      }
+    }
+
+    setState(() {
+      revisions = learned;
+      isLoaded = true;
+    });
+  }
+
+  void handleReaction() {
+    setState(() {
+      currentIndex++;
+      showAnswer = false;
+    });
+
+    if (currentIndex >= revisions.length) {
+      Future.delayed(const Duration(milliseconds: 300), () {
+        Navigator.pop(context);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool hasData = revisions.isNotEmpty && currentIndex < revisions.length;
+
+    return Column(
+      children: [
+        // GÓRNY PASEK
+        Container(
+          height: 51,
+          color: topBarColor,
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: () => Navigator.pop(context),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Powtórki',
+                  style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, decoration: TextDecoration.none),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // ŚRODEK – FISZKA
+Expanded(
+  child: Container(
+    color: middleColor,
+    padding: const EdgeInsets.all(20),
+    child: revisions.isEmpty
+        ? const Center(child: Text('Brak dostępnych powtórek.'))
+        : currentIndex >= revisions.length
+            ? const Center(child: Text('Powtórki zakończone!'))
+            : Align(
+                alignment: Alignment.topLeft,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  children: [
+                    Text(
+                      revisions[currentIndex]['pl']!,
+                      style: GoogleFonts.rubik(
+                        textStyle: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      revisions[currentIndex]['es']!,
+                      style: GoogleFonts.rubik(
+                        textStyle: const TextStyle(
+                          fontSize: 18,
+                          color: Colors.red,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Temat: ${revisions[currentIndex]['topic']!}',
+                      style: GoogleFonts.rubik(
+                        textStyle: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.black54,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+  ),
+),
+
+        // DOLNY PASEK
+        Container(
+          height: 60,
+          child: Column(
+            children: [
+              Container(height: 2, color: bottomBarColor),
+              Expanded(
+                child: Container(
+                  color: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Center(
+                    child: hasData
+                        ? (!showAnswer
+                            ? ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: bottomBarColor,
+                                  foregroundColor: Colors.white,
+                                ),
+                                onPressed: () {
+                                  setState(() => showAnswer = true);
+                                },
+                                child: const Text('Sprawdź'),
+                              )
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                children: [
+                                  FaIconButton(
+                                    icon: FontAwesomeIcons.solidFaceFrown,
+                                    color: Colors.red,
+                                    onTap: handleReaction,
+                                  ),
+                                  FaIconButton(
+                                    icon: FontAwesomeIcons.solidFaceMeh,
+                                    color: Colors.yellow,
+                                    onTap: handleReaction,
+                                  ),
+                                  FaIconButton(
+                                    icon: FontAwesomeIcons.solidFaceSmile,
+                                    color: Colors.green,
+                                    onTap: handleReaction,
+                                  ),
+                                ],
+                              ))
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}

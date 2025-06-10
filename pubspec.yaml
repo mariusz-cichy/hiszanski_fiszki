@@ -1,0 +1,25 @@
+name: hiszpanski_fiszki
+description: Aplikacja fiszkowa do nauki hiszpańskiego
+
+version: 1.0.0+1
+
+environment:
+  sdk: ">=2.19.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  excel: ^4.0.6
+  path_provider: ^2.0.15
+  window_size: ^0.1.0
+  font_awesome_flutter: ^10.8.0
+  google_fonts: ^6.2.1
+  shared_preferences: ^2.5.3
+  file_picker: ^10.1.2
+  intl: ^0.20.2
+  flutter_tts: ^4.2.2
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/fiszki.xlsx
